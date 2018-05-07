@@ -55,10 +55,10 @@ int main(){
 
     for(int i=0;i<4;i++) for(int j=0;j<ancillaPhotons;j++) inBasis(i,j) = 1;
 
-    inBasis(0,ancillaPhotons) = 1;      inBasis(0,ancillaPhotons+2) = 1;
-    inBasis(1,ancillaPhotons+1) = 1;    inBasis(1,ancillaPhotons+3) = 1;
-    inBasis(2,ancillaPhotons) = 1;      inBasis(2,ancillaPhotons+3) = 1;
-    inBasis(3,ancillaPhotons+1) = 1;    inBasis(3,ancillaPhotons+2) = 1;
+    inBasis(0,ancillaModes) = 1;      inBasis(0,ancillaModes+2) = 1;
+    inBasis(1,ancillaModes+1) = 1;    inBasis(1,ancillaModes+3) = 1;
+    inBasis(2,ancillaModes) = 1;      inBasis(2,ancillaModes+3) = 1;
+    inBasis(3,ancillaModes+1) = 1;    inBasis(3,ancillaModes+2) = 1;
 
     setToFullHilbertSpace(photons,modes,outBasis);
 

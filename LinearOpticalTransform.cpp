@@ -12,6 +12,8 @@
 
 #include "LinearOpticalTransform.h"
 
+#define MODES 10
+
 LinearOpticalTransform::LinearOpticalTransform(){
 
 
@@ -26,6 +28,8 @@ void LinearOpticalTransform::initializeCircuit(Eigen::MatrixXi& inBasis, Eigen::
     mPrime.resize( outBasis.rows() );
 
     photons = inBasis.row(0).sum();
+
+    assert( photons == 8 );
 
     for(int i=0;i<inBasis.rows();i++){
 
@@ -113,25 +117,26 @@ void LinearOpticalTransform::rysersAlgorithm(Eigen::MatrixXcd& U,int& i){
 
     for(int p=0;p<nPrime[i].size();p++) bosonOutput *= factorial[ nPrime[i][p] ];
 
-    Eigen::Vector4cd A = Eigen::Vector4cd::Zero(4);
+    Eigen::Vector4cd A = Eigen::Vector4cd::Zero();
 
     for(int j=0;j<4;j++){
 
-        bool even = ( photons + 1 ) % 2; // true;
+        bool even = true;
 
-        Eigen::ArrayXcd weights = Eigen::ArrayXcd::Zero( photons );
+        Eigen::ArrayXcd weights = Eigen::ArrayXcd::Zero( 8 );
 
         while( graycode.iterate() ){
 
-            /** ========= UNROLL THIS LOOP MANUALLY FOR SPEED ===================== */
+            weights(0) += boolPow( graycode.sign ) * U.coeffRef( m[j][0],mPrime[i][graycode.j] );
+            weights(1) += boolPow( graycode.sign ) * U.coeffRef( m[j][1],mPrime[i][graycode.j] );
+            weights(2) += boolPow( graycode.sign ) * U.coeffRef( m[j][2],mPrime[i][graycode.j] );
+            weights(3) += boolPow( graycode.sign ) * U.coeffRef( m[j][3],mPrime[i][graycode.j] );
+            weights(4) += boolPow( graycode.sign ) * U.coeffRef( m[j][4],mPrime[i][graycode.j] );
+            weights(5) += boolPow( graycode.sign ) * U.coeffRef( m[j][5],mPrime[i][graycode.j] );
+            weights(6) += boolPow( graycode.sign ) * U.coeffRef( m[j][6],mPrime[i][graycode.j] );
+            weights(7) += boolPow( graycode.sign ) * U.coeffRef( m[j][7],mPrime[i][graycode.j] );
 
-            for(int l=0;l<photons;l++){
-
-                weights(l) += boolPow( graycode.sign ) * U( m[j][l],mPrime[i][graycode.j] );
-
-            }
-
-            A(j) -= boolPow( even ) * weights.prod();
+            A(j) -= boolPow( even ) * weights(0) * weights(1) * weights(2) * weights(3) * weights(4) * weights(5) * weights(6) * weights(7);
 
             even = !even;
 
@@ -141,7 +146,7 @@ void LinearOpticalTransform::rysersAlgorithm(Eigen::MatrixXcd& U,int& i){
 
         for(int p=0;p<n[j].size();p++) bosonInput *= factorial[ n[j][p] ];
 
-        A(j) /= sqrt( bosonInput * bosonOutput );
+        A.coeffRef(j) /= sqrt( bosonInput * bosonOutput );
 
     }
 
@@ -149,10 +154,10 @@ void LinearOpticalTransform::rysersAlgorithm(Eigen::MatrixXcd& U,int& i){
 
     double py[4];
 
-    py[0] = std::norm( stateAmplitude(0,0) );
-    py[1] = std::norm( stateAmplitude(0,1) );
-    py[2] = std::norm( stateAmplitude(0,2) );
-    py[3] = std::norm( stateAmplitude(0,3) );
+    py[0] = std::norm( stateAmplitude.coeffRef(0,0) );
+    py[1] = std::norm( stateAmplitude.coeffRef(0,1) );
+    py[2] = std::norm( stateAmplitude.coeffRef(0,2) );
+    py[3] = std::norm( stateAmplitude.coeffRef(0,3) );
 
     double pytotal = py[0] + py[1] + py[2] + py[3];
 
@@ -167,7 +172,7 @@ void LinearOpticalTransform::rysersAlgorithm(Eigen::MatrixXcd& U,int& i){
 
 void LinearOpticalTransform::permutationAlgorithm(Eigen::MatrixXcd& U,int& i){
 
-    Eigen::Vector4cd A = Eigen::Vector4cd::Zero(4);
+    Eigen::Vector4cd A = Eigen::Vector4cd::Zero();
 
     do{
 
@@ -177,11 +182,11 @@ void LinearOpticalTransform::permutationAlgorithm(Eigen::MatrixXcd& U,int& i){
 
             for(int k=0;k<m[j].size();k++){
 
-                Uprod *= U( m[j][k],mPrime[i][k] );
+                Uprod *= U.coeffRef( m[j][k],mPrime[i][k] );
 
             }
 
-            A(j) += Uprod;
+            A.coeffRef(j) += Uprod;
 
         }
 
@@ -197,7 +202,7 @@ void LinearOpticalTransform::permutationAlgorithm(Eigen::MatrixXcd& U,int& i){
 
         for(int p=0;p<U.rows();p++) bosonDen *= factorial[ n[j][p] ];
 
-        A(j) *= sqrt( bosonNum/bosonDen );
+        A.coeffRef(j) *= sqrt( bosonNum/bosonDen );
 
     }
 
@@ -205,10 +210,10 @@ void LinearOpticalTransform::permutationAlgorithm(Eigen::MatrixXcd& U,int& i){
 
     double py[4];
 
-    py[0] = std::norm( stateAmplitude(0,0) );
-    py[1] = std::norm( stateAmplitude(0,1) );
-    py[2] = std::norm( stateAmplitude(0,2) );
-    py[3] = std::norm( stateAmplitude(0,3) );
+    py[0] = std::norm( stateAmplitude.coeffRef(0,0) );
+    py[1] = std::norm( stateAmplitude.coeffRef(0,1) );
+    py[2] = std::norm( stateAmplitude.coeffRef(0,2) );
+    py[3] = std::norm( stateAmplitude.coeffRef(0,3) );
 
     double pytotal = py[0] + py[1] + py[2] + py[3];
 
