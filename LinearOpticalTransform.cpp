@@ -12,7 +12,7 @@
 
 #include "LinearOpticalTransform.h"
 
-#define MODES 10
+#define MODES 12
 
 LinearOpticalTransform::LinearOpticalTransform(){
 
@@ -111,7 +111,25 @@ void LinearOpticalTransform::setMutualInformation(Eigen::MatrixXcd& U){
 
 }
 
+inline int idx( int& i,int& j ){
+
+    return 2 * (i + MODES * j);
+
+}
+
+inline void spec_complex_mult_function(double* z1,double* z2){
+
+    double rp = z1[0] * z2[0] - z1[1] * z2[1];
+    z1[1] = z1[0] * z2[1] + z1[1] * z2[0];
+    z1[0] = rp;
+
+    return;
+
+}
+
 void LinearOpticalTransform::rysersAlgorithm(Eigen::MatrixXcd& U,int& i){
+
+    double* dev_U = (double*)U.data();
 
     double bosonOutput = 1.0;
 
@@ -120,6 +138,9 @@ void LinearOpticalTransform::rysersAlgorithm(Eigen::MatrixXcd& U,int& i){
     Eigen::Vector4cd A = Eigen::Vector4cd::Zero();
 
     for(int j=0;j<4;j++){
+
+        //#pragma omp simd
+        //for(int l=0;l<16;l++) weights[l] = 0;
 
         bool even = true;
 
@@ -140,7 +161,7 @@ void LinearOpticalTransform::rysersAlgorithm(Eigen::MatrixXcd& U,int& i){
 
             even = !even;
 
-        }
+}
 
         double bosonInput = 1.0;
 

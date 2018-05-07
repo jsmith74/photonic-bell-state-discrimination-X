@@ -1,8 +1,8 @@
 CC = g++
-CFLAGS = -Ofast -funroll-loops -c
+CFLAGS = -Ofast  -funroll-loops -c
 LFLAGS = -Ofast -funroll-loops
 OBJS = LinearOpticalTransform.o main.o GrayCode.o
-OMPFLAGS = -fopenmp
+OMPFLAGS = -fopenmp -fopenmp-simd
 PFLAGS = -pg -g -fprofile-arcs -ftest-coverage
 
 all: LinearOpticalSimulation
@@ -17,7 +17,7 @@ main.o: main.cpp
 	$(CC) $(CFLAGS) $(OMPFLAGS) main.cpp
 
 LinearOpticalTransform.o: LinearOpticalTransform.cpp
-	$(CC) $(CFLAGS) LinearOpticalTransform.cpp
+	$(CC) $(CFLAGS) $(OMPFLAGS) LinearOpticalTransform.cpp
 
 clean:
 	rm *.o LinearOpticalSimulation *.gcno *.gcda *.out *.txt
