@@ -66,7 +66,8 @@ int main(){
 
     double startTime = omp_get_wtime();
 
-    for(int i=0;i<4;i++) LOCircuit.setMutualInformation(U);
+    //for(int i=0;i<4;i++)
+        LOCircuit.setMutualInformation(U);
 
     double endTime = omp_get_wtime();
 

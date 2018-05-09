@@ -37,8 +37,6 @@ class LinearOpticalTransform{
 
         inline double boolPow(bool& x);
 
-        Eigen::Matrix4d bellStates;
-
 };
 
 inline double LinearOpticalTransform::boolPow(bool& x){

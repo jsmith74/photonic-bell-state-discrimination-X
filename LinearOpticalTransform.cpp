@@ -77,20 +77,6 @@ void LinearOpticalTransform::initializeCircuit(Eigen::MatrixXi& inBasis, Eigen::
 
     graycode.initialize( photons );
 
-    bellStates = Eigen::Matrix4d::Zero();
-
-    bellStates(0,0) = 1/sqrt(2.0);
-    bellStates(1,0) = 1/sqrt(2.0);
-
-    bellStates(0,1) = 1/sqrt(2.0);
-    bellStates(1,1) = -1/sqrt(2.0);
-
-    bellStates(2,2) = 1/sqrt(2.0);
-    bellStates(3,2) = 1/sqrt(2.0);
-
-    bellStates(2,3) = 1/sqrt(2.0);
-    bellStates(3,3) = -1/sqrt(2.0);
-
     return;
 
 }
@@ -117,11 +103,11 @@ inline int idx( int& i,int& j ){
 
 }
 
-inline void spec_complex_mult_function(double* z1,double* z2){
+inline void spec_complex_mult_function(double& x1,double& y1,double& x2,double& y2){
 
-    double rp = z1[0] * z2[0] - z1[1] * z2[1];
-    z1[1] = z1[0] * z2[1] + z1[1] * z2[0];
-    z1[0] = rp;
+    double rp = x1 * x2 - y1 * y2;
+    y1 = x1 * y2 + x2 * y1;
+    x1 = rp;
 
     return;
 
@@ -135,50 +121,95 @@ void LinearOpticalTransform::rysersAlgorithm(Eigen::MatrixXcd& U,int& i){
 
     for(int p=0;p<nPrime[i].size();p++) bosonOutput *= factorial[ nPrime[i][p] ];
 
-    Eigen::Vector4cd A = Eigen::Vector4cd::Zero();
+    double A[8];
+
+    A[0] = 0;   A[1] = 0;
+    A[2] = 0;   A[3] = 0;
+    A[4] = 0;   A[5] = 0;
+    A[6] = 0;   A[7] = 0;
 
     for(int j=0;j<4;j++){
 
-        //#pragma omp simd
-        //for(int l=0;l<16;l++) weights[l] = 0;
+        double dev_weights[16];
+
+        #pragma omp simd
+        for(int l=0;l<16;l++) dev_weights[l] = 0;
 
         bool even = true;
 
-        Eigen::ArrayXcd weights = Eigen::ArrayXcd::Zero( 8 );
-
         while( graycode.iterate() ){
 
-            weights(0) += boolPow( graycode.sign ) * U.coeffRef( m[j][0],mPrime[i][graycode.j] );
-            weights(1) += boolPow( graycode.sign ) * U.coeffRef( m[j][1],mPrime[i][graycode.j] );
-            weights(2) += boolPow( graycode.sign ) * U.coeffRef( m[j][2],mPrime[i][graycode.j] );
-            weights(3) += boolPow( graycode.sign ) * U.coeffRef( m[j][3],mPrime[i][graycode.j] );
-            weights(4) += boolPow( graycode.sign ) * U.coeffRef( m[j][4],mPrime[i][graycode.j] );
-            weights(5) += boolPow( graycode.sign ) * U.coeffRef( m[j][5],mPrime[i][graycode.j] );
-            weights(6) += boolPow( graycode.sign ) * U.coeffRef( m[j][6],mPrime[i][graycode.j] );
-            weights(7) += boolPow( graycode.sign ) * U.coeffRef( m[j][7],mPrime[i][graycode.j] );
+            if( graycode.sign ){
 
-            A(j) -= boolPow( even ) * weights(0) * weights(1) * weights(2) * weights(3) * weights(4) * weights(5) * weights(6) * weights(7);
+                #pragma omp simd
+                for(int l=0;l<8;l++){
+
+                    dev_weights[ 2*l ] += dev_U[ idx( m[j][l],mPrime[i][graycode.j] ) ];
+                    dev_weights[ 2*l + 1 ] += dev_U[ idx( m[j][l],mPrime[i][graycode.j] ) + 1 ];
+
+                }
+
+            }
+
+            else{
+
+                #pragma omp simd
+                for(int l=0;l<8;l++){
+
+                    dev_weights[ 2*l ] -= dev_U[ idx( m[j][l],mPrime[i][graycode.j] ) ];
+                    dev_weights[ 2*l + 1 ] -= dev_U[ idx( m[j][l],mPrime[i][graycode.j] ) + 1 ];
+
+                }
+
+            }
+
+            double resX = 1;    double resY = 0;
+
+            spec_complex_mult_function(resX,resY,dev_weights[0],dev_weights[1]);
+            spec_complex_mult_function(resX,resY,dev_weights[2],dev_weights[3]);
+            spec_complex_mult_function(resX,resY,dev_weights[4],dev_weights[5]);
+            spec_complex_mult_function(resX,resY,dev_weights[6],dev_weights[7]);
+            spec_complex_mult_function(resX,resY,dev_weights[8],dev_weights[9]);
+            spec_complex_mult_function(resX,resY,dev_weights[10],dev_weights[11]);
+            spec_complex_mult_function(resX,resY,dev_weights[12],dev_weights[13]);
+            spec_complex_mult_function(resX,resY,dev_weights[14],dev_weights[15]);
+
+            A[2*j]   -= boolPow( even ) * resX;
+            A[2*j+1] -= boolPow( even ) * resY;
 
             even = !even;
 
-}
+        }
 
         double bosonInput = 1.0;
 
         for(int p=0;p<n[j].size();p++) bosonInput *= factorial[ n[j][p] ];
 
-        A.coeffRef(j) /= sqrt( bosonInput * bosonOutput );
+        A[2*j]   /= sqrt( bosonInput * bosonOutput );
+        A[2*j+1] /= sqrt( bosonInput * bosonOutput );
 
     }
 
-    Eigen::MatrixXcd stateAmplitude = A.transpose() * bellStates;
+    double stateAmplitude[8];
+
+    stateAmplitude[0] =  0.7071067811865475 * (A[0] + A[2]);
+    stateAmplitude[1] =  0.7071067811865475 * (A[1] + A[3]);
+
+    stateAmplitude[2] =  0.7071067811865475 * (A[0] - A[2]);
+    stateAmplitude[3] =  0.7071067811865475 * (A[1] - A[3]);
+
+    stateAmplitude[4] =  0.7071067811865475 * (A[4] + A[6]);
+    stateAmplitude[5] =  0.7071067811865475 * (A[5] + A[7]);
+
+    stateAmplitude[6] =  0.7071067811865475 * (A[4] - A[6]);
+    stateAmplitude[7] =  0.7071067811865475 * (A[5] - A[7]);
 
     double py[4];
 
-    py[0] = std::norm( stateAmplitude.coeffRef(0,0) );
-    py[1] = std::norm( stateAmplitude.coeffRef(0,1) );
-    py[2] = std::norm( stateAmplitude.coeffRef(0,2) );
-    py[3] = std::norm( stateAmplitude.coeffRef(0,3) );
+    py[0] = stateAmplitude[0] * stateAmplitude[0] + stateAmplitude[1] * stateAmplitude[1];
+    py[1] = stateAmplitude[2] * stateAmplitude[2] + stateAmplitude[3] * stateAmplitude[3];
+    py[2] = stateAmplitude[4] * stateAmplitude[4] + stateAmplitude[5] * stateAmplitude[5];
+    py[3] = stateAmplitude[6] * stateAmplitude[6] + stateAmplitude[7] * stateAmplitude[7];
 
     double pytotal = py[0] + py[1] + py[2] + py[3];
 
@@ -193,21 +224,29 @@ void LinearOpticalTransform::rysersAlgorithm(Eigen::MatrixXcd& U,int& i){
 
 void LinearOpticalTransform::permutationAlgorithm(Eigen::MatrixXcd& U,int& i){
 
-    Eigen::Vector4cd A = Eigen::Vector4cd::Zero();
+    double* dev_U = (double*)U.data();
+
+    double A[8];
+
+    A[0] = 0;   A[1] = 0;
+    A[2] = 0;   A[3] = 0;
+    A[4] = 0;   A[5] = 0;
+    A[6] = 0;   A[7] = 0;
 
     do{
 
         for(int j=0;j<4;j++){
 
-            std::complex<double> Uprod(1.0,0.0);
+            double resX = 1;    double resY = 0;
 
             for(int k=0;k<m[j].size();k++){
 
-                Uprod *= U.coeffRef( m[j][k],mPrime[i][k] );
+                spec_complex_mult_function( resX,resY,dev_U[ idx(m[j][k],mPrime[i][k]) ], dev_U[ idx(m[j][k],mPrime[i][k]) + 1 ] );
 
             }
 
-            A.coeffRef(j) += Uprod;
+            A[2*j]   += resX;
+            A[2*j+1] += resY;
 
         }
 
@@ -223,18 +262,31 @@ void LinearOpticalTransform::permutationAlgorithm(Eigen::MatrixXcd& U,int& i){
 
         for(int p=0;p<U.rows();p++) bosonDen *= factorial[ n[j][p] ];
 
-        A.coeffRef(j) *= sqrt( bosonNum/bosonDen );
+        A[2*j]   *= sqrt( bosonNum/bosonDen );
+        A[2*j+1] *= sqrt( bosonNum/bosonDen );
 
     }
 
-    Eigen::MatrixXcd stateAmplitude = A.transpose() * bellStates;
+    double stateAmplitude[8];
+
+    stateAmplitude[0] =  0.7071067811865475 * (A[0] + A[2]);
+    stateAmplitude[1] =  0.7071067811865475 * (A[1] + A[3]);
+
+    stateAmplitude[2] =  0.7071067811865475 * (A[0] - A[2]);
+    stateAmplitude[3] =  0.7071067811865475 * (A[1] - A[3]);
+
+    stateAmplitude[4] =  0.7071067811865475 * (A[4] + A[6]);
+    stateAmplitude[5] =  0.7071067811865475 * (A[5] + A[7]);
+
+    stateAmplitude[6] =  0.7071067811865475 * (A[4] - A[6]);
+    stateAmplitude[7] =  0.7071067811865475 * (A[5] - A[7]);
 
     double py[4];
 
-    py[0] = std::norm( stateAmplitude.coeffRef(0,0) );
-    py[1] = std::norm( stateAmplitude.coeffRef(0,1) );
-    py[2] = std::norm( stateAmplitude.coeffRef(0,2) );
-    py[3] = std::norm( stateAmplitude.coeffRef(0,3) );
+    py[0] = stateAmplitude[0] * stateAmplitude[0] + stateAmplitude[1] * stateAmplitude[1];
+    py[1] = stateAmplitude[2] * stateAmplitude[2] + stateAmplitude[3] * stateAmplitude[3];
+    py[2] = stateAmplitude[4] * stateAmplitude[4] + stateAmplitude[5] * stateAmplitude[5];
+    py[3] = stateAmplitude[6] * stateAmplitude[6] + stateAmplitude[7] * stateAmplitude[7];
 
     double pytotal = py[0] + py[1] + py[2] + py[3];
 
