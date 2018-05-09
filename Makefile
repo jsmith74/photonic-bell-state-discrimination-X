@@ -1,8 +1,8 @@
-CC = g++
-CFLAGS = -Ofast  -funroll-loops -c
+CC = icpc
+CFLAGS = -Ofast -funroll-loops -c
 LFLAGS = -Ofast -funroll-loops
 OBJS = LinearOpticalTransform.o main.o GrayCode.o
-OMPFLAGS = -fopenmp -fopenmp-simd
+OMPFLAGS = -openmp -openmp-simd
 PFLAGS = -pg -g -fprofile-arcs -ftest-coverage
 
 all: LinearOpticalSimulation

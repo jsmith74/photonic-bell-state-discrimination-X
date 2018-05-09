@@ -1,0 +1,19 @@
+#!/bin/bash
+#SBATCH --qos=normal              # Quality of Service
+#SBATCH --job-name=mic_debug   # Job Name
+#SBATCH --time=0-00:01:00         # WallTime
+#SBATCH --nodes=1               # Number of Nodes
+#SBATCH --ntasks-per-node=1     # Number of tasks (MPI presseces)
+#SBATCH --cpus-per-task=20      # Number of processors per task OpenMP threads()
+#SBATCH --gres=mic:2            # Number of Co-Processors
+
+module load intel-psxe/2015-update1
+module load intel/mic/sdk/3.3
+module load intel/mic/runtime/3.3
+
+export OMP_NUM_THREADS=$SLURM_CPUS_PER_TASK
+export MIC_ENV_PREFIX=MIC
+export MIC_OMP_NUM_THREADS=240
+export MIC_KMP_AFFINITY=compact
+
+./LinearOpticalSimulation

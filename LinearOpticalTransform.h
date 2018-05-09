@@ -34,8 +34,12 @@ class LinearOpticalTransform{
         void permutationAlgorithm(Eigen::MatrixXcd& U,int& i);
         void setmVec(std::vector<int>& m, std::vector<int>& n);
         void rysersAlgorithm(Eigen::MatrixXcd& U,int& i);
-
         inline double boolPow(bool& x);
+
+        void setParallelGrid();
+        void checkThreadsAndProcs();
+
+        int numThreadsCPU, numCoprocessors, numThreadsPhi;
 
 };
 

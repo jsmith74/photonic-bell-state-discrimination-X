@@ -14,8 +14,73 @@
 
 #define MODES 12
 
+#define ALLOC alloc_if(1)
+#define FREE free_if(1)
+#define RETAIN free_if(0)
+#define REUSE alloc_if(0)
+
+int* dev_parallelGrid;
+__declspec(target(mic)) int dev_numThreadsCPU;
+
 LinearOpticalTransform::LinearOpticalTransform(){
 
+
+}
+
+void LinearOpticalTransform::setParallelGrid(){
+
+    checkThreadsAndProcs();
+
+    std::cout << "CPU threads: " << numThreadsCPU << std::endl;
+    std::cout << "# coprocessors: " << numCoprocessors << std::endl;
+    std::cout << "# coprocessor threads: " << numThreadsPhi << std::endl;
+
+    assert( false && "UP TO HERE - build the parallel grid and work sharing");
+
+    return;
+
+}
+
+void LinearOpticalTransform::checkThreadsAndProcs(){
+
+#pragma omp parallel
+{
+
+    numThreadsCPU = omp_get_num_threads();
+
+}
+
+    numCoprocessors = _Offload_number_of_devices();
+
+#pragma offload target (mic:0) inout(numThreadsPhi)
+#pragma omp parallel
+{
+
+    int threadID = omp_get_thread_num();
+
+    if(threadID == 0) numThreadsPhi = omp_get_num_threads();
+
+}
+
+    numThreadsPhi *= numCoprocessors;
+
+    assert( numCoprocessors == 2 );
+
+    dev_numThreadsCPU = numThreadsCPU;
+
+#pragma offload target(mic:0) in( dev_numThreadsCPU : ALLOC RETAIN )
+#pragma omp parallel
+{
+
+}
+
+#pragma offload target(mic:1) in( dev_numThreadsCPU : ALLOC RETAIN )
+#pragma omp parallel
+{
+
+}
+
+    return;
 
 }
 
@@ -76,6 +141,8 @@ void LinearOpticalTransform::initializeCircuit(Eigen::MatrixXi& inBasis, Eigen::
     outBasis.resize(0,0);
 
     graycode.initialize( photons );
+
+    setParallelGrid();
 
     return;
 
