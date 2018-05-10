@@ -13,13 +13,15 @@
 #include "LinearOpticalTransform.h"
 
 #define MODES 12
+#define MIC_RATIO 76      // ENTER THE PERCENTAGE OF WORK THAT SHOULD BE DONE
+                          // ON THE COPROCESSORS VS CPU CORES
 
 #define ALLOC alloc_if(1)
 #define FREE free_if(1)
 #define RETAIN free_if(0)
 #define REUSE alloc_if(0)
 
-int* dev_parallelGrid;
+__declspec(target(mic)) int* dev_parallelGrid;
 __declspec(target(mic)) int dev_numThreadsCPU;
 
 LinearOpticalTransform::LinearOpticalTransform(){
@@ -27,7 +29,7 @@ LinearOpticalTransform::LinearOpticalTransform(){
 
 }
 
-void LinearOpticalTransform::setParallelGrid(){
+void LinearOpticalTransform::setParallelGrid(int micRatio){
 
     checkThreadsAndProcs();
 
@@ -35,7 +37,120 @@ void LinearOpticalTransform::setParallelGrid(){
     std::cout << "# coprocessors: " << numCoprocessors << std::endl;
     std::cout << "# coprocessor threads: " << numThreadsPhi << std::endl;
 
-    assert( false && "UP TO HERE - build the parallel grid and work sharing");
+    setTotalTerms();
+
+    coprocessorTerms = ( micRatio / 100.0 ) * totalTerms;
+    CPUTerms = totalTerms - coprocessorTerms;
+
+    coprocessorTermsPerThread = coprocessorTerms / numThreadsPhi;
+    CPUTermsPerThread = CPUTerms / numThreadsCPU;
+
+    allocateWorkToThreads();
+
+    printParallelGrid();
+
+    assert( false && "Check the printout result to make sure the parallel grid is working alright.");
+
+    return;
+
+}
+
+void LinearOpticalTransform::printParallelGrid(){
+
+    std::ofstream outfile("parallelGrid.dat");
+
+    for(int i=0;i<numThreadsPhi + numThreadsCPU;i++){
+
+        int terms = 0;
+
+        for(int y=dev_parallelGrid[i];y<dev_parallelGrid[i+1];y++){
+
+            if( useRysers[y] ) terms += std::pow(2,photons);
+            else terms += numbPermutations(y);
+
+        }
+
+        outfile << i << "\t" << terms << std::endl;
+
+    }
+
+    outfile.close();
+
+    return;
+
+}
+
+void LinearOpticalTransform::allocateWorkToThreads(){
+
+    dev_parallelGrid = new int[numThreadsPhi + numThreadsCPU + 1];
+    dev_parallelGrid[0] = 0;
+
+    int localTerms = 0;
+
+    int k=1;
+
+    int savePoint;
+
+    for(int i=0;i<useRysers.size() && k!=numThreadsCPU+1 ;i++){
+
+        if( useRysers[i] ) localTerms += std::pow(2,photons);
+        else localTerms += numbPermutations(i);
+
+        if( localTerms >= CPUTermsPerThread ){
+
+            dev_parallelGrid[k] = i;
+            localTerms = 0;
+            k++;
+
+        }
+
+        savePoint = i+1;
+
+    }
+
+    for(int i=savePoint;i<useRysers.size() && k!=numThreadsPhi + numThreadsCPU + 1;i++){
+
+        if( useRysers[i] ) localTerms += std::pow(2,photons);
+        else localTerms += numbPermutations(i);
+
+        if( localTerms >= coprocessorTermsPerThread ){
+
+            dev_parallelGrid[k] = i;
+            localTerms = 0;
+            k++;
+
+        }
+
+        savePoint = i+1;
+
+    }
+
+    assert( savePoint == useRysers.size() );
+
+    dev_parallelGrid[ k ] = useRysers.size();
+
+    k++;
+
+    for(;k<numThreadsPhi + numThreadsCPU + 1;k++){
+
+        dev_parallelGrid[ k ] = 0;
+
+    }
+
+    return;
+
+}
+
+void LinearOpticalTransform::setTotalTerms(){
+
+    totalTerms = 0;
+
+    for(int i=0;i<useRysers.size();i++){
+
+        if( useRysers[i] ) totalTerms += std::pow(2,photons);
+        else totalTerms += numbPermutations(i);
+
+    }
 
     return;
 
@@ -142,7 +257,7 @@ void LinearOpticalTransform::initializeCircuit(Eigen::MatrixXi& inBasis, Eigen::
 
     graycode.initialize( photons );
 
-    setParallelGrid();
+    setParallelGrid(MIC_RATIO);
 
     return;
 
@@ -154,7 +269,7 @@ void LinearOpticalTransform::setMutualInformation(Eigen::MatrixXcd& U){
 
     for(int y=0;y<useRysers.size();y++){
 
-        if( useRysers[y] == true ) rysersAlgorithm(U,y);
+        if( useRysers[y] ) rysersAlgorithm(U,y);
 
         else permutationAlgorithm(U,y);
 

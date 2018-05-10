@@ -2,6 +2,7 @@
 #define LINEAROPTICALTRANSFORM_H_INCLUDED
 
 #include <iostream>
+#include <fstream>
 #include <Eigen/Dense>
 #include <vector>
 #include <algorithm>
@@ -36,10 +37,14 @@ class LinearOpticalTransform{
         void rysersAlgorithm(Eigen::MatrixXcd& U,int& i);
         inline double boolPow(bool& x);
 
-        void setParallelGrid();
+        void setParallelGrid(int micRatio);
         void checkThreadsAndProcs();
+        void setTotalTerms();
+        void allocateWorkToThreads();
+        void printParallelGrid();
 
-        int numThreadsCPU, numCoprocessors, numThreadsPhi;
+        int numThreadsCPU, numCoprocessors, numThreadsPhi, totalTerms, coprocessorTerms, CPUTerms,
+            coprocessorTermsPerThread, CPUTermsPerThread;
 
 };
 
