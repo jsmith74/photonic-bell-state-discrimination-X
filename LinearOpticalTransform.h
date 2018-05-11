@@ -24,16 +24,16 @@ class LinearOpticalTransform{
         std::vector<double> factorial;
         std::vector<bool> useRysers;
         int photons;
-        GrayCode graycode;
 
         template <typename T>
         void printVec(std::vector<T>& a);
 
+        bool iterate(int bitstring[],int& j,int& k,bool& ending,bool& sign);
         double numbPermutations(int& i);
         double doublefactorial(int x);
-        void permutationAlgorithm(Eigen::MatrixXcd& U,int& i);
+        void rysersAlgorithm(Eigen::MatrixXcd& U,int& i,double& parallelMutualInformation);
+        void permutationAlgorithm(Eigen::MatrixXcd& U,int& i,double& parallelMutualInformation);
         void setmVec(std::vector<int>& m, std::vector<int>& n);
-        void rysersAlgorithm(Eigen::MatrixXcd& U,int& i);
 
         inline double boolPow(bool& x);
 

@@ -32,7 +32,7 @@ int main(){
     /** Establish number of photons and modes and input and output Fock basis  */
 
     int ancillaPhotons = 6;
-    int ancillaModes = 6;
+    int ancillaModes = 8;
 
     int photons = 2 + ancillaPhotons;
     int modes = 4 + ancillaModes;

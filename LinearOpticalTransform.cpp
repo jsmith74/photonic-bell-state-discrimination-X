@@ -12,7 +12,7 @@
 
 #include "LinearOpticalTransform.h"
 
-#define MODES 10
+#define MODES 12
 
 LinearOpticalTransform::LinearOpticalTransform(){
 
@@ -75,8 +75,6 @@ void LinearOpticalTransform::initializeCircuit(Eigen::MatrixXi& inBasis, Eigen::
     inBasis.resize(0,0);
     outBasis.resize(0,0);
 
-    graycode.initialize( photons );
-
     bellStates = Eigen::Matrix4d::Zero();
 
     bellStates(0,0) = 1/sqrt(2.0);
@@ -97,21 +95,54 @@ void LinearOpticalTransform::initializeCircuit(Eigen::MatrixXi& inBasis, Eigen::
 
 void LinearOpticalTransform::setMutualInformation(Eigen::MatrixXcd& U){
 
-    mutualInformation = 0;
+    double parallelMutualInformation = 0;
 
+#pragma omp parallel for schedule(dynamic) reduction(+:parallelMutualInformation)
     for(int y=0;y<useRysers.size();y++){
 
-        if( useRysers[y] == true ) rysersAlgorithm(U,y);
+        if( useRysers[y] == true ) rysersAlgorithm(U,y,parallelMutualInformation);
 
-        else permutationAlgorithm(U,y);
+        else permutationAlgorithm(U,y,parallelMutualInformation);
 
     }
+
+    mutualInformation = parallelMutualInformation;
 
     return;
 
 }
+bool LinearOpticalTransform::iterate(int bitstring[],int& j,int& k,bool& ending,bool& sign){
 
-void LinearOpticalTransform::rysersAlgorithm(Eigen::MatrixXcd& U,int& i){
+    if( ending ){
+
+        bitstring[8-1] = 0;
+        k = 0;
+        ending = false;
+        return false;
+
+    }
+
+    bool t = k % 2;     j = 0;
+
+    if( t == 1 ){
+
+        while( bitstring[j] != 1 ) j++;
+        j++;
+
+    }
+
+    bitstring[j] = 1 - bitstring[j];
+    sign = bitstring[j];
+
+    k += 2 * bitstring[j] - 1;
+
+    if( k == bitstring[8-1] ) ending = true;
+
+    return true;
+
+}
+
+void LinearOpticalTransform::rysersAlgorithm(Eigen::MatrixXcd& U,int& i,double& parallelMutualInformation){
 
     double bosonOutput = 1.0;
 
@@ -119,22 +150,34 @@ void LinearOpticalTransform::rysersAlgorithm(Eigen::MatrixXcd& U,int& i){
 
     Eigen::Vector4cd A = Eigen::Vector4cd::Zero();
 
+    int bitstring[8];
+
+    for(int p=0;p<8;p++) bitstring[p] = 0;
+
+    int graycodej = 0;
+
+    int graycodek = 0;
+
+    bool ending = false;
+
+    bool graycodesign;
+
     for(int j=0;j<4;j++){
 
         bool even = true;
 
         Eigen::ArrayXcd weights = Eigen::ArrayXcd::Zero( 8 );
 
-        while( graycode.iterate() ){
+        while( iterate(bitstring,graycodej,graycodek,ending,graycodesign) ){
 
-            weights(0) += boolPow( graycode.sign ) * U.coeffRef( m[j][0],mPrime[i][graycode.j] );
-            weights(1) += boolPow( graycode.sign ) * U.coeffRef( m[j][1],mPrime[i][graycode.j] );
-            weights(2) += boolPow( graycode.sign ) * U.coeffRef( m[j][2],mPrime[i][graycode.j] );
-            weights(3) += boolPow( graycode.sign ) * U.coeffRef( m[j][3],mPrime[i][graycode.j] );
-            weights(4) += boolPow( graycode.sign ) * U.coeffRef( m[j][4],mPrime[i][graycode.j] );
-            weights(5) += boolPow( graycode.sign ) * U.coeffRef( m[j][5],mPrime[i][graycode.j] );
-            weights(6) += boolPow( graycode.sign ) * U.coeffRef( m[j][6],mPrime[i][graycode.j] );
-            weights(7) += boolPow( graycode.sign ) * U.coeffRef( m[j][7],mPrime[i][graycode.j] );
+            weights(0) += boolPow( graycodesign ) * U.coeffRef( m[j][0],mPrime[i][graycodej] );
+            weights(1) += boolPow( graycodesign ) * U.coeffRef( m[j][1],mPrime[i][graycodej] );
+            weights(2) += boolPow( graycodesign ) * U.coeffRef( m[j][2],mPrime[i][graycodej] );
+            weights(3) += boolPow( graycodesign ) * U.coeffRef( m[j][3],mPrime[i][graycodej] );
+            weights(4) += boolPow( graycodesign ) * U.coeffRef( m[j][4],mPrime[i][graycodej] );
+            weights(5) += boolPow( graycodesign ) * U.coeffRef( m[j][5],mPrime[i][graycodej] );
+            weights(6) += boolPow( graycodesign ) * U.coeffRef( m[j][6],mPrime[i][graycodej] );
+            weights(7) += boolPow( graycodesign ) * U.coeffRef( m[j][7],mPrime[i][graycodej] );
 
             A(j) -= boolPow( even ) * weights(0) * weights(1) * weights(2) * weights(3) * weights(4) * weights(5) * weights(6) * weights(7);
 
@@ -161,16 +204,16 @@ void LinearOpticalTransform::rysersAlgorithm(Eigen::MatrixXcd& U,int& i){
 
     double pytotal = py[0] + py[1] + py[2] + py[3];
 
-    if(py[0] != 0) mutualInformation += py[0] * log2( pytotal / py[0] );
-    if(py[1] != 0) mutualInformation += py[1] * log2( pytotal / py[1] );
-    if(py[2] != 0) mutualInformation += py[2] * log2( pytotal / py[2] );
-    if(py[3] != 0) mutualInformation += py[3] * log2( pytotal / py[3] );
+    if(py[0] != 0) parallelMutualInformation += py[0] * log2( pytotal / py[0] );
+    if(py[1] != 0) parallelMutualInformation += py[1] * log2( pytotal / py[1] );
+    if(py[2] != 0) parallelMutualInformation += py[2] * log2( pytotal / py[2] );
+    if(py[3] != 0) parallelMutualInformation += py[3] * log2( pytotal / py[3] );
 
     return;
 
 }
 
-void LinearOpticalTransform::permutationAlgorithm(Eigen::MatrixXcd& U,int& i){
+void LinearOpticalTransform::permutationAlgorithm(Eigen::MatrixXcd& U,int& i,double& parallelMutualInformation){
 
     Eigen::Vector4cd A = Eigen::Vector4cd::Zero();
 
@@ -217,10 +260,10 @@ void LinearOpticalTransform::permutationAlgorithm(Eigen::MatrixXcd& U,int& i){
 
     double pytotal = py[0] + py[1] + py[2] + py[3];
 
-    if(py[0] != 0) mutualInformation += py[0] * log2( pytotal / py[0] );
-    if(py[1] != 0) mutualInformation += py[1] * log2( pytotal / py[1] );
-    if(py[2] != 0) mutualInformation += py[2] * log2( pytotal / py[2] );
-    if(py[3] != 0) mutualInformation += py[3] * log2( pytotal / py[3] );
+    if(py[0] != 0) parallelMutualInformation += py[0] * log2( pytotal / py[0] );
+    if(py[1] != 0) parallelMutualInformation += py[1] * log2( pytotal / py[1] );
+    if(py[2] != 0) parallelMutualInformation += py[2] * log2( pytotal / py[2] );
+    if(py[3] != 0) parallelMutualInformation += py[3] * log2( pytotal / py[3] );
 
     return;
 
