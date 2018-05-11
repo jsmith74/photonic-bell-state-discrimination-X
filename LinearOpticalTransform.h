@@ -25,16 +25,15 @@ class LinearOpticalTransform{
         std::vector<double> factorial;
         std::vector<bool> useRysers;
         int photons;
-        GrayCode graycode;
 
         template <typename T>
         void printVec(std::vector<T>& a);
 
         double numbPermutations(int& i);
         double doublefactorial(int x);
-        void permutationAlgorithm(Eigen::MatrixXcd& U,int& i);
+        void permutationAlgorithm(Eigen::MatrixXcd& U,int& i,double& parallelMutualInformation);
         void setmVec(std::vector<int>& m, std::vector<int>& n);
-        void rysersAlgorithm(Eigen::MatrixXcd& U,int& i);
+        void rysersAlgorithm(Eigen::MatrixXcd& U,int& i,double& parallelMutualInformation);
         inline double boolPow(bool& x);
 
         void setParallelGrid(int micRatio);

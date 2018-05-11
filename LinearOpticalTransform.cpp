@@ -13,16 +13,11 @@
 #include "LinearOpticalTransform.h"
 
 #define MODES 12
-#define MIC_RATIO 76      // ENTER THE PERCENTAGE OF WORK THAT SHOULD BE DONE
-                          // ON THE COPROCESSORS VS CPU CORES
+#define MIC_RATIO 0
 
-#define ALLOC alloc_if(1)
-#define FREE free_if(1)
-#define RETAIN free_if(0)
-#define REUSE alloc_if(0)
 
-__declspec(target(mic)) int* dev_parallelGrid;
-__declspec(target(mic)) int dev_numThreadsCPU;
+int* dev_parallelGrid;
+int dev_numThreadsCPU;
 
 LinearOpticalTransform::LinearOpticalTransform(){
 
@@ -42,14 +37,11 @@ void LinearOpticalTransform::setParallelGrid(int micRatio){
     coprocessorTerms = ( micRatio / 100.0 ) * totalTerms;
     CPUTerms = totalTerms - coprocessorTerms;
 
-    coprocessorTermsPerThread = coprocessorTerms / numThreadsPhi;
     CPUTermsPerThread = CPUTerms / numThreadsCPU;
 
     allocateWorkToThreads();
 
     printParallelGrid();
-
-    assert( false && "Check the printout result to make sure the parallel grid is working alright.");
 
     return;
 
@@ -165,35 +157,37 @@ void LinearOpticalTransform::checkThreadsAndProcs(){
 
 }
 
-    numCoprocessors = _Offload_number_of_devices();
+    numCoprocessors = 0;//_Offload_number_of_devices();
 
-#pragma offload target (mic:0) inout(numThreadsPhi)
-#pragma omp parallel
-{
+//#pragma offload target (mic:0) inout(numThreadsPhi)
+//#pragma omp parallel
+//{
+//
+//    int threadID = omp_get_thread_num();
+//
+//    if(threadID == 0) numThreadsPhi = omp_get_num_threads();
+//
+//}
 
-    int threadID = omp_get_thread_num();
-
-    if(threadID == 0) numThreadsPhi = omp_get_num_threads();
-
-}
+    numThreadsPhi = 0;
 
     numThreadsPhi *= numCoprocessors;
 
-    assert( numCoprocessors == 2 );
+    assert( numCoprocessors == 0 );
 
-    dev_numThreadsCPU = numThreadsCPU;
+    //dev_numThreadsCPU = numThreadsCPU;
 
-#pragma offload target(mic:0) in( dev_numThreadsCPU : ALLOC RETAIN )
-#pragma omp parallel
-{
-
-}
-
-#pragma offload target(mic:1) in( dev_numThreadsCPU : ALLOC RETAIN )
-#pragma omp parallel
-{
-
-}
+//#pragma offload target(mic:0) in( dev_numThreadsCPU : ALLOC RETAIN )
+//#pragma omp parallel
+//{
+//
+//}
+//
+//#pragma offload target(mic:1) in( dev_numThreadsCPU : ALLOC RETAIN )
+//#pragma omp parallel
+//{
+//
+//}
 
     return;
 
@@ -255,8 +249,6 @@ void LinearOpticalTransform::initializeCircuit(Eigen::MatrixXi& inBasis, Eigen::
     inBasis.resize(0,0);
     outBasis.resize(0,0);
 
-    graycode.initialize( photons );
-
     setParallelGrid(MIC_RATIO);
 
     return;
@@ -265,15 +257,24 @@ void LinearOpticalTransform::initializeCircuit(Eigen::MatrixXi& inBasis, Eigen::
 
 void LinearOpticalTransform::setMutualInformation(Eigen::MatrixXcd& U){
 
-    mutualInformation = 0;
+    double parallelMutualInformation = 0;
 
-    for(int y=0;y<useRysers.size();y++){
+#pragma omp parallel reduction(+:parallelMutualInformation)
+    {
 
-        if( useRysers[y] ) rysersAlgorithm(U,y);
+        int threadID = omp_get_thread_num();
 
-        else permutationAlgorithm(U,y);
+        for( int y=dev_parallelGrid[threadID]; y<dev_parallelGrid[threadID+1]; y++ ){
+
+            if( useRysers[y] ) rysersAlgorithm(U,y,parallelMutualInformation);
+
+            else permutationAlgorithm(U,y,parallelMutualInformation);
+
+        }
 
     }
+
+    mutualInformation = parallelMutualInformation;
 
     return;
 
@@ -295,7 +296,49 @@ inline void spec_complex_mult_function(double& x1,double& y1,double& x2,double& 
 
 }
 
-void LinearOpticalTransform::rysersAlgorithm(Eigen::MatrixXcd& U,int& i){
+bool iterate(bool& sign,int& j, int& k,std::vector<bool>& bitstring,bool& ending,int& n ){
+
+    if( ending ){
+
+        bitstring[n-1] = 0;
+        k = 0;
+        ending = false;
+        return false;
+
+    }
+
+    bool t = k % 2;     j = 0;
+
+    if( t == 1 ){
+
+        while( bitstring[j] != 1 ) j++;
+        j++;
+
+    }
+
+    bitstring[j] = 1 - bitstring[j];
+    sign = bitstring[j];
+
+    k += 2 * bitstring[j] - 1;
+
+    if( k == bitstring[n-1] ) ending = true;
+
+    return true;
+
+}
+
+void LinearOpticalTransform::rysersAlgorithm(Eigen::MatrixXcd& U,int& i,double& parallelMutualInformation){
+
+    bool sign;
+    int graycodej, graycodek;
+    std::vector<bool> bitstring(photons);
+    for(int p=0;p<photons;p++) bitstring[p] = 0;
+
+    graycodej = 0;
+
+    graycodek = 0;
+
+    bool ending = false;
 
     double* dev_U = (double*)U.data();
 
@@ -319,15 +362,15 @@ void LinearOpticalTransform::rysersAlgorithm(Eigen::MatrixXcd& U,int& i){
 
         bool even = true;
 
-        while( graycode.iterate() ){
+        while( iterate(sign,graycodej,graycodek,bitstring,ending,photons) ){
 
-            if( graycode.sign ){
+            if( sign ){
 
                 #pragma omp simd
                 for(int l=0;l<8;l++){
 
-                    dev_weights[ 2*l ] += dev_U[ idx( m[j][l],mPrime[i][graycode.j] ) ];
-                    dev_weights[ 2*l + 1 ] += dev_U[ idx( m[j][l],mPrime[i][graycode.j] ) + 1 ];
+                    dev_weights[ 2*l ] += dev_U[ idx( m[j][l],mPrime[i][graycodej] ) ];
+                    dev_weights[ 2*l + 1 ] += dev_U[ idx( m[j][l],mPrime[i][graycodej] ) + 1 ];
 
                 }
 
@@ -338,8 +381,8 @@ void LinearOpticalTransform::rysersAlgorithm(Eigen::MatrixXcd& U,int& i){
                 #pragma omp simd
                 for(int l=0;l<8;l++){
 
-                    dev_weights[ 2*l ] -= dev_U[ idx( m[j][l],mPrime[i][graycode.j] ) ];
-                    dev_weights[ 2*l + 1 ] -= dev_U[ idx( m[j][l],mPrime[i][graycode.j] ) + 1 ];
+                    dev_weights[ 2*l ] -= dev_U[ idx( m[j][l],mPrime[i][graycodej] ) ];
+                    dev_weights[ 2*l + 1 ] -= dev_U[ idx( m[j][l],mPrime[i][graycodej] ) + 1 ];
 
                 }
 
@@ -395,16 +438,16 @@ void LinearOpticalTransform::rysersAlgorithm(Eigen::MatrixXcd& U,int& i){
 
     double pytotal = py[0] + py[1] + py[2] + py[3];
 
-    if(py[0] != 0) mutualInformation += py[0] * log2( pytotal / py[0] );
-    if(py[1] != 0) mutualInformation += py[1] * log2( pytotal / py[1] );
-    if(py[2] != 0) mutualInformation += py[2] * log2( pytotal / py[2] );
-    if(py[3] != 0) mutualInformation += py[3] * log2( pytotal / py[3] );
+    if(py[0] != 0) parallelMutualInformation += py[0] * log2( pytotal / py[0] );
+    if(py[1] != 0) parallelMutualInformation += py[1] * log2( pytotal / py[1] );
+    if(py[2] != 0) parallelMutualInformation += py[2] * log2( pytotal / py[2] );
+    if(py[3] != 0) parallelMutualInformation += py[3] * log2( pytotal / py[3] );
 
     return;
 
 }
 
-void LinearOpticalTransform::permutationAlgorithm(Eigen::MatrixXcd& U,int& i){
+void LinearOpticalTransform::permutationAlgorithm(Eigen::MatrixXcd& U,int& i,double& parallelMutualInformation){
 
     double* dev_U = (double*)U.data();
 
@@ -472,10 +515,10 @@ void LinearOpticalTransform::permutationAlgorithm(Eigen::MatrixXcd& U,int& i){
 
     double pytotal = py[0] + py[1] + py[2] + py[3];
 
-    if(py[0] != 0) mutualInformation += py[0] * log2( pytotal / py[0] );
-    if(py[1] != 0) mutualInformation += py[1] * log2( pytotal / py[1] );
-    if(py[2] != 0) mutualInformation += py[2] * log2( pytotal / py[2] );
-    if(py[3] != 0) mutualInformation += py[3] * log2( pytotal / py[3] );
+    if(py[0] != 0) parallelMutualInformation += py[0] * log2( pytotal / py[0] );
+    if(py[1] != 0) parallelMutualInformation += py[1] * log2( pytotal / py[1] );
+    if(py[2] != 0) parallelMutualInformation += py[2] * log2( pytotal / py[2] );
+    if(py[3] != 0) parallelMutualInformation += py[3] * log2( pytotal / py[3] );
 
     return;
 
